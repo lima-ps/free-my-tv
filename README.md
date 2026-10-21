@@ -112,8 +112,11 @@ The first values come from `config.properties`, created by the first build (Goog
 |---|---|---|
 | `tmdb_key` | Your free TMDB key, for the picks | empty |
 | `tmdb_region` | Your country (two letters): which titles are on which app | `US` |
+| `picks` | Picks per tab: 3 on screen, → past the last one shows the next 3 (`3`, `6`, `9` or `12`) | `3` |
+| `watch_in` | Where the picks open: `service` (the streaming app) or `stremio` (the title's page in Stremio) | `service` |
 | `latitude`, `longitude` | Your city, for the weather and the sunset | New York |
 | `city` | The name on the weather card | `Weather` |
+| `live_tv_app` | An app for the Live TV button to open instead of the antenna (its package, e.g. your operator's TV app) | empty |
 | `language` | `auto` (follows the TV), `en`, `es`, `pt`, `ru` or `de` | `auto` |
 | `show_crypto` | Show Binance crypto prices on home and screensaver | `true` |
 | `currency` | Crypto prices in `USD`, `EUR`, `BRL`… | `USD` |

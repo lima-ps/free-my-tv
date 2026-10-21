@@ -51,9 +51,12 @@ final class Config {
 
     static final String TMDB_KEY = "$(prop tmdb_key '')";
     static final String TMDB_REGION = "$(prop tmdb_region US)";
+    static final int PICKS = $(number picks 3);
+    static final String WATCH_IN = "$(prop watch_in service)";
     static final String LATITUDE = "$LAT";
     static final String LONGITUDE = "$LON";
     static final String CITY = "$(prop city '')";
+    static final String LIVE_TV_APP = "$(prop live_tv_app '')";
     static final String LANGUAGE = "$(prop language auto)";
     static final String CURRENCY = "$(prop currency USD)";
     static final String TEMPERATURE = "$(prop temperature auto)";

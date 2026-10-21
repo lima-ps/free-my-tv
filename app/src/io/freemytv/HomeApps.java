@@ -24,6 +24,7 @@ import android.graphics.drawable.Drawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
+import android.net.Uri;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -63,6 +64,7 @@ final class HomeApps {
     static final class Item {
         int kind;
         String key, label, pkg, inputId, number;
+        String uri;         // apps: a page inside the app to open (a pick in Stremio); null = the app as it opens
         String symbol;      // icon for the shortcuts and special cards
         Bitmap tile;        // 16:9 card (apps and specials)
         Bitmap logo;        // colored logo with no background (shelf); null = use the card
@@ -363,6 +365,12 @@ final class HomeApps {
         Intent intent;
         switch (it.kind) {
             case APP:
+                if (it.uri != null) {
+                    intent = new Intent(Intent.ACTION_VIEW, Uri.parse(it.uri)).setPackage(it.pkg);
+                    // Stremio takes a search only as it starts: a fresh start, even if it's already open.
+                    if (it.uri.contains("/search?")) intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    break;
+                }
                 intent = launchIntent(a.getPackageManager(), it.pkg);
                 if (intent != null) intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 break;
@@ -395,9 +403,14 @@ final class HomeApps {
     /**
      * Live TV: tune the antenna input directly. MediaTek TV Center otherwise restores the last source used, which can
      * be HDMI, so its explicit activity receives the tuner URI. Other TV apps keep the standard channel-list request.
+     * With live_tv_app in config.properties, that app instead (an operator's TV app), while it's installed.
      */
     static Intent liveTv(Context c) {
         PackageManager pm = c.getPackageManager();
+        if (!Config.LIVE_TV_APP.isEmpty()) {
+            Intent app = launchIntent(pm, Config.LIVE_TV_APP);
+            if (app != null) return app;
+        }
         String tuner = tunerInput(c);
         Intent mediaTek = launchIntent(pm, "com.mediatek.wwtv.tvcenter");
         if (mediaTek != null && tuner != null) {
