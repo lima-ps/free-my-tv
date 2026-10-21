@@ -134,10 +134,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private boolean nightPair;          // the glass holds both photos (day and night), blended by `night`
     private Shader nightGradient;
 
-    // At the top: tabs (0 to 2) and icon-only buttons (3 to 5); the three cards
-    private int tab, topIndex, cardIndex;
+    // At the top: tabs (0 to 2) and icon-only buttons (3 to 5); the three cards, a page of the tab's picks
+    private int tab, topIndex, cardIndex, cardPage;
     private int widgetIndex;    // with TalkBack on, the drawer's weather (0) or quotes (1) card can take the focus
-    private List<Recs.Pick> cards = new ArrayList<>();
+    private List<Recs.Pick> cards = new ArrayList<>();      // all of the tab's picks; the screen shows a page of three
     private final Spring[] topFocus = new Spring[6];
     private final RectF[] topRects = new RectF[6];
     private final Spring[] cardFocus = new Spring[3];
@@ -2144,6 +2144,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Recs.Pick p = currentPick();
             if (p == null || p.pkg == null) return;
             it = HomeApps.app(p.pkg, Recs.serviceName(p));
+            it.uri = Recs.link(p);
             r = heroButton;
         } else if (zone == Z_STATUS) {
             if (statusItems.isEmpty()) return;
@@ -2161,9 +2162,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             it = lightButtons.get(topIndex - 3);
             r = topRects[topIndex];
         } else if (zone == Z_CARDS) {
-            Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
+            Recs.Pick p = shown(cardIndex);
             if (p == null || p.pkg == null) return;
             it = HomeApps.app(p.pkg, Recs.serviceName(p));
+            it.uri = Recs.link(p);
             r = cardRects[cardIndex];
         } else {
             if (shelf.isEmpty()) return;
@@ -2382,7 +2384,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         for (int i = picksOn() ? 0 : 3; i < 3 + lightButtons.size(); i++) out.add(a11yId(Z_TOP, i));
-        for (int i = 0; i < Math.min(3, cards.size()); i++) out.add(a11yId(Z_CARDS, i));
+        for (int i = 0; i < shownCount(); i++) out.add(a11yId(Z_CARDS, i));
         for (int i = 0; i < shelf.size(); i++) out.add(a11yId(Z_SHELF, i));
         for (int i = 0; i < drawerItems.size(); i++) out.add(a11yId(Z_DRAWER, i));
         if (drawerOpen && Prefs.weather()) out.add(a11yId(WIDGETS, 0));
@@ -2398,7 +2400,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_TOP:
                 if (i >= 3) return label(lightButtons, i - 3);
                 return tabs()[i] + Ui.tr(", aba ", ", tab ") + (i + 1) + Ui.tr(" de 3", " of 3");
-            case Z_CARDS: return i < cards.size() ? pickText(cards.get(i)) : "";
+            case Z_CARDS: return shown(i) != null ? pickText(shown(i)) : "";
             case Z_SHELF:
                 if (reordering && i == shelfIndex) {
                     return Ui.tr("Movendo ", "Moving ", "Moviendo ") + label(shelf, i)
@@ -2434,7 +2436,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 dy = (i < 3 ? heroLayer : status).getTranslationY();
                 break;
             case Z_CARDS:
-                if (i >= Math.min(3, cards.size())) return false;
+                if (i >= shownCount()) return false;
                 a11yRect.set(cardRects[i]);
                 dy = heroLayer.getTranslationY();
                 break;
@@ -2468,7 +2470,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (sheetOpen) return others.isEmpty() ? -1 : a11yId(GRID, gridIndex);
         switch (zone) {
             case Z_TOP: return a11yId(Z_TOP, topIndex);
-            case Z_CARDS: return cardIndex < cards.size() ? a11yId(Z_CARDS, cardIndex) : -1;
+            case Z_CARDS: return cardIndex < shownCount() ? a11yId(Z_CARDS, cardIndex) : -1;
             case Z_SHELF: return shelf.isEmpty() ? -1 : a11yId(Z_SHELF, shelfIndex);
             case Z_DRAWER: return drawerItems.isEmpty() ? -1 : a11yId(Z_DRAWER, drawerIndex);
             case WIDGETS: return a11yId(WIDGETS, widgetIndex);
@@ -2522,7 +2524,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 if (i < 3) selectTab(i);
                 break;
             case Z_CARDS:
-                if (i >= cards.size()) return;
+                if (i >= shownCount()) return;
                 if (drawerOpen) closeDrawer();
                 cardIndex = i;
                 break;
@@ -2609,19 +2611,41 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         heroDirty = statusDirty = true;
     }
 
-    /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the first one. */
+    /** The card at place i (0 to 2) of the page on the screen, or null. */
+    private Recs.Pick shown(int i) {
+        int at = cardPage * 3 + i;
+        return i < 3 && at < cards.size() ? cards.get(at) : null;
+    }
+
+    /** How many cards the page on the screen has (the last page can have fewer than three). */
+    private int shownCount() {
+        return Math.max(0, Math.min(3, cards.size() - cardPage * 3));
+    }
+
+    private int pages() {
+        return (cards.size() + 2) / 3;
+    }
+
+    /** The cards of the current tab (Explore, Movies, Shows), a page at a time, and the background from the first one. */
     private void updateCards() {
         List<Recs.Pick> list = recs.now(TAB_KIND[tab]);
         if (!samePicks(list, cards)) {
             cards = list;
-            cardIndex = Math.min(cardIndex, Math.max(0, list.size() - 1));
+            if (cardPage >= pages()) cardPage = 0;
+            cardIndex = Math.min(cardIndex, Math.max(0, shownCount() - 1));
             if (zone == Z_CARDS && list.isEmpty()) {
                 zone = Z_SHELF;
                 retarget(false);
             }
         }
-        for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
-        Backdrop b = cards.isEmpty() ? null : recs.backdrop(cards.get(0));
+        // Every tab's first page preloaded, so switching tabs is instant, and this tab's page and the next one (Recs
+        // keeps that many ready).
+        for (int t = 0; t < TAB_KIND.length; t++) {
+            List<Recs.Pick> first = t == tab ? cards : recs.now(TAB_KIND[t]);
+            for (int i = 0; i < Math.min(3, first.size()); i++) recs.backdrop(first.get(i));
+        }
+        for (int i = cardPage * 3; i < Math.min(cards.size(), cardPage * 3 + 6); i++) recs.backdrop(cards.get(i));
+        Backdrop b = cards.isEmpty() ? null : recs.backdrop(shown(0));
         if (cards.isEmpty() || b != null) showBackdrop(b);
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
@@ -2630,6 +2654,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void selectTab(int index) {
         if (index == tab) return;
         tab = index;
+        cardPage = 0;
         updateCards();
         heroDirty = true;
     }
@@ -2706,6 +2731,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (i == tab) lTabOn.setColor(blend(tone(L_INK, WHITE), L_INK, focus));   // always dark on the white pill
             c.drawText(tabs()[i], r.centerX() - p.measureText(tabs()[i]) / 2, r.centerY() + Ui.halfCap(p), p);
         }
+        // More than one page of picks: a dot per page after the tabs, the one on the screen in full ink.
+        int pageCount = pages();
+        if (pageCount > 1) {
+            float dotX = topRects[2].right + 34 * k, dotY = topRects[2].centerY();
+            fill.setShader(null);
+            for (int i = 0; i < pageCount; i++) {
+                fill.setColor(Ui.alpha(tone(L_INK, WHITE), i == cardPage ? 0.85f : 0.25f));
+                c.drawCircle(dotX + i * 20 * k, dotY, 5 * k, fill);
+            }
+        }
         int top = -1;
         for (int i = 0; i < 3; i++) if (cardFocus[i].value > 0.02f && (top < 0 || cardFocus[i].value > cardFocus[top].value)) top = i;
         for (int i = 0; i < 3; i++) if (i != top) drawLightCard(c, i);
@@ -2747,7 +2782,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      */
     private void drawLightCard(Canvas c, int i) {
         RectF base = cardRects[i];
-        Recs.Pick p = i < cards.size() ? cards.get(i) : null;
+        Recs.Pick p = shown(i);
         float v = cardFocus[i].value, f = Ui.clamp(v), s = 1 + 0.05f * v;
         float bw = base.width(), bh = base.height(), r0 = 18 * k;
         float cx = base.centerX(), cy = base.centerY() - 6 * k * v;
@@ -2849,14 +2884,24 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     topIndex = picksOn() ? tab : 3;
                 } else {
                     zone = Z_CARDS;
-                    cardIndex = nearest(cardRects, cards.size(), tileRects[shelfIndex].centerX());
+                    cardIndex = nearest(cardRects, shownCount(), tileRects[shelfIndex].centerX());
                 }
                 break;
             case Z_CARDS:
                 if (dx != 0) {
-                    int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
-                    if (next == cardIndex) return true;
+                    // Past the last card (or before the first), the next (or previous) page of three.
+                    int next = cardIndex + dx, page = cardPage;
+                    if (next >= shownCount() && cardPage + 1 < pages()) {
+                        cardPage++;
+                        next = 0;
+                    } else if (next < 0 && cardPage > 0) {
+                        cardPage--;
+                        next = 2;
+                    }
+                    next = Math.max(0, Math.min(shownCount() - 1, next));
+                    if (next == cardIndex && page == cardPage) return true;
                     cardIndex = next;
+                    if (page != cardPage) updateCards();
                 } else if (dy < 0) {
                     zone = Z_TOP;
                     topIndex = tab;     // as on Apple TV: moving up to the tabs focuses the selected tab
@@ -2876,7 +2921,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         zone = Z_SHELF;
                     } else {
                         zone = Z_CARDS;
-                        cardIndex = nearest(cardRects, cards.size(), topRects[topIndex].centerX());
+                        cardIndex = nearest(cardRects, shownCount(), topRects[topIndex].centerX());
                     }
                 } else {
                     return true;
